@@ -1,18 +1,22 @@
-name: Moonraker Host Scanner
+name: Build PyQt6 App
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:  # Позволяет запускать вручную с сайта GitHub
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  APP_NAME: "MyApp"
+  ICON_WIN: "icon.ico"
+  ICON_MAC: "icon.icns"
+  MAIN_SCRIPT: "main.py"
 
 jobs:
   build-windows:
-    name: Build on Windows
+    name: Build Windows executable
     runs-on: windows-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,23 +28,21 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build executable
+      - name: Build .exe with icon
         run: |
-          pyinstaller --onefile --windowed main.py
+          pyinstaller --onefile --windowed --icon=${{ env.ICON_WIN }} ${{ env.MAIN_SCRIPT }}
 
-      - name: Upload Windows artifact
+      - name: Upload Windows binary
         uses: actions/upload-artifact@v4
         with:
           name: windows-binary
-          path: dist/main.exe
+          path: dist/${{ env.APP_NAME }}.exe
 
   build-macos:
-    name: Build on macOS
+    name: Build macOS .app and .dmg
     runs-on: macos-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -51,13 +53,78 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install create-dmg
 
-      - name: Build executable
+      - name: Build .app bundle with icon
         run: |
-          pyinstaller --onefile --windowed main.py
+          pyinstaller --windowed --name ${{ env.APP_NAME }} --icon ${{ env.ICON_MAC }} --onefile ${{ env.MAIN_SCRIPT }}
 
-      - name: Upload macOS artifact
+      - name: Create DMG installer
+        run: |
+          create-dmg dist/${{ env.APP_NAME }}.app --overwrite --out dist/
+
+      - name: Zip .app bundle
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/${{ env.APP_NAME }}.app dist/${{ env.APP_NAME }}.app.zip
+
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-binary
-          path: dist/main
+          name: macos-binaries
+          path: |
+            dist/${{ env.APP_NAME }}.app.zip
+            dist/${{ env.APP_NAME }}.dmg
+
+  release:
+    name: Create GitHub Release and upload binaries
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v3
+        with:
+          name: windows-binary
+          path: ./dist/
+
+      - name: Download macOS binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: macos-binaries
+          path: ./dist/
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows executable to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/${{ env.APP_NAME }}.exe
+          asset_name: ${{ env.APP_NAME }}-windows.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS .app.zip to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/${{ env.APP_NAME }}.app.zip
+          asset_name: ${{ env.APP_NAME }}-macos.app.zip
+          asset_content_type: application/zip
+
+      - name: Upload macOS .dmg to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/${{ env.APP_NAME }}.dmg
+          asset_name: ${{ env.APP_NAME }}-macos.dmg
+          asset_content_type: application/octet-stream

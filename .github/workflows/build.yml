@@ -30,7 +30,7 @@ jobs:
 
       - name: Build .exe with icon
         run: |
-          pyinstaller --onefile --windowed --icon=${{ env.ICON_WIN }} ${{ env.MAIN_SCRIPT }}
+          pyinstaller --onefile --windowed --icon=${{ env.ICON_WIN }} --name ${{ env.APP_NAME }} ${{ env.MAIN_SCRIPT }}
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
@@ -53,15 +53,16 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install create-dmg
 
       - name: Build .app bundle with icon
         run: |
-          pyinstaller --windowed --name ${{ env.APP_NAME }} --icon ${{ env.ICON_MAC }} --onefile ${{ env.MAIN_SCRIPT }}
+          pyinstaller --windowed --onefile --icon ${{ env.ICON_MAC }} --name ${{ env.APP_NAME }} ${{ env.MAIN_SCRIPT }}
 
-      - name: Create DMG installer
+      - name: Create DMG with hdiutil
         run: |
-          create-dmg dist/${{ env.APP_NAME }}.app --overwrite --out dist/
+          mkdir -p dist/dmg-tmp
+          cp -R dist/${{ env.APP_NAME }}.app dist/dmg-tmp/
+          hdiutil create -volname "${{ env.APP_NAME }}" -srcfolder dist/dmg-tmp -ov -format UDZO dist/${{ env.APP_NAME }}.dmg
 
       - name: Zip .app bundle
         run: |
@@ -94,7 +95,7 @@ jobs:
           name: macos-binaries
           path: ./dist/
 
-      - name: Create Release
+      - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         with:

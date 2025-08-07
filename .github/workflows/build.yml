@@ -1,4 +1,4 @@
-name: Build PyQt6 App
+name: Moonraker Host Scanner
 
 on:
   push:
@@ -7,8 +7,9 @@ on:
       - master
     tags:
       - 'v*'
+
 env:
-  APP_NAME: MyApp
+  APP_NAME: MoonrakerHostScanner
   MAIN_SCRIPT: main.py
   ICON_WIN: icon.ico
   ICON_MAC: icon.icns
@@ -94,27 +95,22 @@ jobs:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # необходимо для release
+      contents: write
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
           files: |
-            artifacts/**/*.{zip,dmg}
+            artifacts/**/*.zip
+            artifacts/**/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

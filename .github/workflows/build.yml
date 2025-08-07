@@ -2,8 +2,11 @@ name: Build PyQt6 App
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
-      - 'v*'  # например, v1, v6 и т.д.
+      - 'v*'
 
 env:
   APP_NAME: MoonrakerHostScanner

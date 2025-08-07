@@ -11,7 +11,7 @@ from appdirs import user_config_dir
 from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QTableWidget, QTableWidgetItem, QDialog, QListWidget,
-                             QInputDialog, QMessageBox, QHeaderView, QProgressBar, QMenu, QCheckBox)
+                             QInputDialog, QMessageBox, QHeaderView, QProgressBar, QMenu, QCheckBox, QSystemTrayIcon)
 from PyQt6.QtCore import Qt, QUrl, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWebEngineWidgets import QWebEngineView

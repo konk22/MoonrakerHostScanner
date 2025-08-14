@@ -54,7 +54,6 @@ jobs:
             cmd_build: |
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.icns" main.py
               codesign --sign - --force --deep dist/MoonrakerHostScanner.app
-              mv dist/MoonrakerHostScanner.app dist/MoonrakerHostScanner.app
               hdiutil create -volname MoonrakerHostScanner -srcfolder dist/MoonrakerHostScanner.app -ov -format UDZO dist/MoonrakerHostScanner.dmg
             cmd_sign: echo "Ad-hoc signing completed during build"
             out_file_name: MoonrakerHostScanner.dmg
@@ -79,7 +78,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt pyinstaller
+        pip install -r requirements.txt
     - name: Install additional tools
       shell: bash
       run: |

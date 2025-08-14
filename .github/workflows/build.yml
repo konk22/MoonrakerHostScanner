@@ -121,7 +121,7 @@ jobs:
           PY
 
           # macOS ICNS из icon_base.png (CLI icnsutil)
-          icnsutil create icon_base.png -o icon.icns --sizes 16 32 64 128 256 512 1024
+          icnsutil compose icon_base.png -o icon.icns --sizes 16 32 64 128 256 512 1024
 
       # (Необязательно) Можно удалить инструменты, чтобы не мешали окружению
       - name: Uninstall icon tooling

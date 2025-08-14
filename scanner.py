@@ -4,7 +4,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from concurrent.futures import ThreadPoolExecutor
 import ipaddress
 import logging
-from utils import KNOWN_HOSTS_WORKERS, SUBNET_SCAN_WORKERS
+from utils import KNOWN_HOSTS_WORKERS, SUBNET_SCAN_WORKERS, PROGRESS_EMIT_STEP, STATE_OFFLINE
 
 
 class ScanThread(QThread):
@@ -35,14 +35,14 @@ class ScanThread(QThread):
 
         with ThreadPoolExecutor(max_workers=KNOWN_HOSTS_WORKERS) as executor:
             futures = [executor.submit(self.network_utils.scan_port, ip) for ip in known_hosts]
-            for future in futures:
+            for idx, future in enumerate(futures, start=1):
                 scanned_hosts += 1
                 result = future.result()
                 if result:
                     open_hosts.add(result)
                     hostname, state = self.network_utils.get_printer_info(result)
                     self.host_found.emit(result, hostname, state)
-                if total_hosts > 0:
+                if total_hosts > 0 and (idx % PROGRESS_EMIT_STEP == 0 or scanned_hosts == total_hosts):
                     self.progress_updated.emit(scanned_hosts / total_hosts * 100)
 
         for subnet in self.subnets:
@@ -51,14 +51,14 @@ class ScanThread(QThread):
                 self.logger.debug(f"Scanning subnet: {subnet}")
                 with ThreadPoolExecutor(max_workers=SUBNET_SCAN_WORKERS) as executor:
                     futures = [executor.submit(self.network_utils.scan_port, ip) for ip in network.hosts()]
-                    for future in futures:
+                    for idx, future in enumerate(futures, start=1):
                         scanned_hosts += 1
                         result = future.result()
                         if result:
                             open_hosts.add(result)
                             hostname, state = self.network_utils.get_printer_info(result)
                             self.host_found.emit(result, hostname, state)
-                        if total_hosts > 0:
+                        if total_hosts > 0 and (idx % PROGRESS_EMIT_STEP == 0 or scanned_hosts == total_hosts):
                             self.progress_updated.emit(scanned_hosts / total_hosts * 100)
             except ValueError as e:
                 self.logger.error(f"Invalid subnet {subnet}: {e}")
@@ -67,7 +67,7 @@ class ScanThread(QThread):
 
         for host in known_hosts - open_hosts:
             hostname, _ = self.network_utils.get_printer_info(host)
-            self.host_found.emit(host, hostname, "Оффлайн")
+            self.host_found.emit(host, hostname, STATE_OFFLINE)
 
         self.scan_finished.emit(list(open_hosts))
         self.logger.debug(f"Scan finished, found hosts: {open_hosts}")

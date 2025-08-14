@@ -23,8 +23,11 @@ KNOWN_HOSTS_WORKERS: int = 20
 SUBNET_SCAN_WORKERS: int = 100
 
 # UI интервалы
-REFRESH_INTERVAL_MS: int = 1000
-AUTO_REFRESH_INTERVAL_MS: int = 300
+REFRESH_INTERVAL_MS: int = 5000
+AUTO_REFRESH_INTERVAL_MS: int = 5000
+
+# Прогресс сканирования
+PROGRESS_EMIT_STEP: int = 32
 
 # Состояния
 STATE_OFFLINE: str = "Оффлайн"

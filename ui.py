@@ -117,6 +117,9 @@ class MainWindow(QMainWindow):
 
         self.initialize_table()
 
+        # Первое обновление сразу при старте (без ожидания таймера)
+        self.refresh_hosts(auto=True)
+
     def toggle_auto_refresh(self, state):
         self.auto_refresh = state == Qt.CheckState.Checked.value
         if self.auto_refresh:
@@ -281,6 +284,10 @@ class MainWindow(QMainWindow):
         self.logger.debug(f"Error shown: {message}")
 
     def scan_network(self):
+        # Не запускаем второй поток сканирования, если первый ещё идёт
+        if hasattr(self, "scan_thread") and self.scan_thread.isRunning():
+            self.logger.debug("Scan requested but a scan is already running; skipping")
+            return
         self.scan_button.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -294,6 +301,10 @@ class MainWindow(QMainWindow):
         self.logger.debug("Started network scan")
 
     def refresh_hosts(self, auto=False):
+        # Не запускаем второй поток обновления, если предыдущий ещё идёт
+        if hasattr(self, "scan_thread") and self.scan_thread.isRunning():
+            self.logger.debug(f"Refresh requested (auto={auto}) but a scan is already running; skipping")
+            return
         if not auto:
             self.scan_button.setEnabled(False)
             self.refresh_button.setEnabled(True)

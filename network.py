@@ -40,7 +40,7 @@ class NetworkUtils:
             return None
 
     def get_printer_info(self, host):
-        """Получает hostname и state принтера через API Moonraker с кэшированием."""
+        """Получает hostname и state ПРЯМО из /printer/info (без objects/query), с кэшированием."""
         if host in self.printer_info_cache:
             self.logger.debug(f"Retrieved printer info for {host} from cache")
             return self.printer_info_cache[host]
@@ -48,20 +48,17 @@ class NetworkUtils:
         hostname = "Неизвестно"
         state = "Недоступен"
         try:
-            response = requests.get(f"http://{host}:{DEFAULT_MOONRAKER_PORT}/printer/info", timeout=DEFAULT_HTTP_TIMEOUT_S)
-            if response.status_code == 200:
-                data = response.json()
-                hostname = data.get("result", {}).get("hostname", "Неизвестно")
-
-            response = requests.post(
-                f"http://{host}:{DEFAULT_MOONRAKER_PORT}/printer/objects/query",
-                json={"objects": {"print_stats": None}},
-                headers={"Content-Type": "application/json"},
+            response = requests.get(
+                f"http://{host}:{DEFAULT_MOONRAKER_PORT}/printer/info",
                 timeout=DEFAULT_HTTP_TIMEOUT_S
             )
             if response.status_code == 200:
                 data = response.json()
-                state = data.get("result", {}).get("status", {}).get("print_stats", {}).get("state", "Недоступен")
+                result = data.get("result", {}) if isinstance(data, dict) else {}
+                hostname = result.get("hostname", hostname)
+                state = result.get("state", state)
+            else:
+                self.logger.debug(f"/printer/info returned non-200 for {host}: {response.status_code}")
             self.logger.debug(f"Printer info for {host}: hostname={hostname}, state={state}")
         except requests.RequestException as e:
             self.logger.debug(f"Failed to get printer info for {host}: {e}")

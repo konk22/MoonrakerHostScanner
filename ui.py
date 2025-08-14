@@ -1,5 +1,3 @@
-# ui.py
-
 import logging
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QProgressBar, QCheckBox, QMenu, \
     QSpacerItem, QSizePolicy, QMessageBox, QInputDialog, QApplication, QSystemTrayIcon, QTableWidgetItem
@@ -14,8 +12,8 @@ from utils import APP_NAME, open_ssh_terminal, LOG_LEVELS, set_log_level
 from HostTable import HostTable
 from WebcamDialog import WebcamDialog
 from SettingsDialog import SettingsDialog
-
 import sys
+
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -43,15 +41,14 @@ class MainWindow(QMainWindow):
         self.auto_refresh = self.config.get("auto_refresh", True)
         self.previous_states = {}
         self.current_hosts = []
+        self.config_file_opened = False
 
-        # Set initial logging level
         set_log_level(self.log_level)
 
         if not self.subnets:
             self.subnets = [self.network_utils.get_local_subnet()]
             self.config_manager.save_current_config(self)
 
-        # Системный трей
         icon_path = ""
         if platform.system() == "Windows":
             icon_path = resource_path("icon.ico")
@@ -71,13 +68,11 @@ class MainWindow(QMainWindow):
         self.logger.debug("System tray icon initialized")
         self.check_notification_permissions()
 
-        # Основной виджет и layout
         widget = QWidget()
         self.setCentralWidget(widget)
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        # Кнопки управления + чекбокс автообновления справа
         button_layout = QHBoxLayout()
         buttons = [
             ("Настройки", self.open_settings),
@@ -101,38 +96,36 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         layout.addLayout(button_layout)
 
-        # Таблица хостов
         self.table = HostTable(self)
         self.table.cellClicked.connect(self.cell_clicked)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
         layout.addWidget(self.table)
 
-        # Прогресс-бар
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
-        # Кнопка сворачивания в трей
         exit_layout = QHBoxLayout()
         exit_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
         self.exit_button = QPushButton("Свернуть в трей")
         self.exit_button.setFixedWidth(140)
         self.exit_button.clicked.connect(self.hide_to_tray)
         exit_layout.addWidget(self.exit_button)
+        self.close_button = QPushButton("Закрыть")
+        self.close_button.setFixedWidth(140)
+        self.close_button.clicked.connect(self.close)
+        exit_layout.addWidget(self.close_button)
         layout.addLayout(exit_layout)
 
-        # Таймер для автообновления
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(lambda: self.refresh_hosts(auto=True))
         if self.auto_refresh:
-            self.refresh_timer.start(300)
+            self.refresh_timer.start(1000)
 
-        # Инициализация таблицы с известными хостами
         self.initialize_table()
 
     def toggle_auto_refresh(self, state):
-        """Включает или выключает автообновление."""
         self.auto_refresh = state == Qt.CheckState.Checked.value
         if self.auto_refresh:
             self.refresh_timer.start(300)
@@ -142,21 +135,21 @@ class MainWindow(QMainWindow):
         self.logger.debug(f"Auto-refresh set to {self.auto_refresh}")
 
     def open_settings(self):
-        """Открывает модальное окно настроек."""
         dialog = SettingsDialog(self.subnets, self.notification_states, self.ssh_user, self.log_level,
-                                self.config_manager, self)
+                               self.config_manager, self)
+        self.config_file_opened = True
         if dialog.exec():
             self.subnets = dialog.get_subnets()
             self.notification_states = dialog.get_notification_states()
             self.ssh_user = dialog.get_ssh_credentials()
             self.log_level = dialog.get_log_level()
+            self.config_file_opened = False
             self.config_manager.save_current_config(self)
             self.logger.debug(
                 f"Settings updated: subnets={self.subnets}, notification_states={self.notification_states}, "
                 f"ssh_user={self.ssh_user}, log_level={self.log_level}")
 
     def check_notification_permissions(self):
-        """Проверяет настройки уведомлений."""
         try:
             self.tray_icon.showMessage(
                 APP_NAME,
@@ -169,7 +162,6 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to send notification: {e}")
 
     def hide_to_tray(self):
-        """Сворачивает окно в системный трей."""
         self.hide()
         try:
             self.tray_icon.showMessage(
@@ -183,7 +175,6 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to send tray notification: {e}")
 
     def show_context_menu(self, position):
-        """Показывает контекстное меню для переименования хоста."""
         index = self.table.indexAt(position)
         if not index.isValid() or index.column() != 0:
             return
@@ -192,21 +183,25 @@ class MainWindow(QMainWindow):
         action = menu.exec(self.table.viewport().mapToGlobal(position))
         if action == rename_action:
             row = index.row()
-            host = self.table.item(row, 1).text()
-            current_name = self.table.item(row, 0).text()
+            host = self.table.item(row, 1).text().lstrip('🟢🔴 ').strip()
+            current_name = self.table.item(row, 0).text().lstrip('▶▼ ').strip()
             new_name, ok = QInputDialog.getText(self, "Переименовать хост", "Введите новое имя:", text=current_name)
             if ok and new_name:
-                self.known_hosts[host] = new_name
+                self.known_hosts[host]["custom_name"] = new_name
                 self.config_manager.save_current_config(self)
-                self.table.setItem(row, 0, QTableWidgetItem(new_name))
+                triangle = "▼" if host in self.table.expanded_rows else "▶"
+                self.table.setItem(row, 0, QTableWidgetItem(f"{triangle} {new_name}"))
                 if host not in self.current_hosts:
                     self.current_hosts.append(host)
                 self.logger.debug(f"Renamed host {host} to {new_name}, current_hosts: {self.current_hosts}")
 
     def cell_clicked(self, row, column):
-        """Обрабатывает клик по ячейкам таблицы."""
-        host = self.table.item(row, 1).text()
-        if column == 1:  # Хост
+        if column == 5:  # Игнорируем клики по столбцу с кнопками
+            return
+        host = self.table.item(row, 1).text().lstrip('🟢🔴 ').strip()
+        if column == 0:  # Клик по имени
+            self.table.toggle_control_row(row, host)
+        elif column == 1:  # Хост
             import webbrowser
             webbrowser.open(f"http://{host}")
             self.logger.debug(f"Opened browser for host: {host}")
@@ -222,26 +217,53 @@ class MainWindow(QMainWindow):
             dialog.exec()
             self.logger.debug(f"Opened webcam dialog for host: {host}")
 
+    def delete_host(self, host, row):
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение удаления",
+            f"Вы уверены, что хотите удалить хост {host}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if host in self.known_hosts:
+                del self.known_hosts[host]
+            if host in self.current_hosts:
+                self.current_hosts.remove(host)
+            # Удаляем строку управления, если она открыта
+            if host in self.table.expanded_rows:
+                self.table.removeRow(self.table.expanded_rows[host])
+                del self.table.expanded_rows[host]
+            self.table.removeRow(row)
+            self.config_manager.save_current_config(self)
+            self.logger.debug(f"Deleted host {host} from configuration and table")
+
     def update_progress(self, value):
-        """Обновляет прогресс-бар."""
         self.progress_bar.setValue(int(value))
         self.logger.debug(f"Progress updated: {value}%")
 
     def initialize_table(self):
-        """Инициализирует таблицу с известными хостами."""
         self.table.setRowCount(0)
         self.current_hosts = []
-        for host in self.known_hosts:
+        for host, host_info in self.known_hosts.items():
             hostname, state = self.network_utils.get_printer_info(host)
+            self.known_hosts[host]["original_name"] = hostname or "Неизвестно"
+            display_name = host_info.get("custom_name") if host_info.get("custom_name") is not None else (hostname or "Неизвестно")
             self.current_hosts.append(host)
             row = self.table.rowCount()
             self.table.insertRow(row)
-            self.table.add_host(row, host, hostname, "Оффлайн", self.known_hosts)
+            self.table.add_host(row, host, display_name, "Оффлайн", self.known_hosts)
+            self.logger.debug(f"Initialized host {host} with display_name={display_name}")
 
     def add_host_to_table(self, host, hostname, state):
-        """Добавляет или обновляет хост в таблице и отправляет уведомления."""
-        custom_name = self.known_hosts.get(host, hostname)
-        was_updated = self.table.update_host_state(host, hostname, state, self.known_hosts)
+        hostname = hostname or "Неизвестно"
+        if host not in self.known_hosts:
+            self.known_hosts[host] = {"original_name": hostname, "custom_name": None}
+            self.logger.debug(f"Added new host {host} with original_name={hostname}")
+        else:
+            self.known_hosts[host]["original_name"] = hostname
+            self.logger.debug(f"Updated original_name for {host} to {hostname}")
+        custom_name = self.known_hosts[host].get("custom_name") if self.known_hosts[host].get("custom_name") is not None else hostname
+        was_updated = self.table.update_host_state(host, custom_name, state, self.known_hosts)
         if not was_updated:
             self.current_hosts.append(host)
         if state in self.notification_states and (
@@ -259,7 +281,6 @@ class MainWindow(QMainWindow):
         self.previous_states[host] = state
 
     def handle_thread_error(self, message, auto=False):
-        """Унифицированная обработка ошибок из потоков."""
         QMessageBox.critical(self, "Ошибка", message)
         self.progress_bar.setVisible(False)
         if not auto:
@@ -268,7 +289,6 @@ class MainWindow(QMainWindow):
         self.logger.debug(f"Error shown: {message}")
 
     def scan_network(self):
-        """Сканирует сеть и обновляет таблицу."""
         self.scan_button.setEnabled(False)
         self.refresh_button.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -282,11 +302,9 @@ class MainWindow(QMainWindow):
         self.logger.debug("Started network scan")
 
     def refresh_hosts(self, auto=False):
-        """Проверяет доступность известных хостов."""
         if not auto:
             self.scan_button.setEnabled(False)
-            self.refresh_button.setEnabled(False)
-        # Не показываем прогресс-бар при обновлении
+            self.refresh_button.setEnabled(True)
         self.scan_thread = ScanThread([], self.known_hosts.keys(), self.network_utils)
         self.scan_thread.host_found.connect(self.add_host_to_table)
         self.scan_thread.progress_updated.connect(self.update_progress)
@@ -296,8 +314,15 @@ class MainWindow(QMainWindow):
         self.logger.debug(f"Started refresh hosts (auto={auto})")
 
     def finish_scan(self, hosts, auto):
-        """Завершает сканирование, обновляет конфигурацию."""
-        new_hosts = {host: self.known_hosts.get(host, self.network_utils.get_printer_info(host)[0]) for host in hosts}
+        new_hosts = {}
+        for host in hosts:
+            hostname, _ = self.network_utils.get_printer_info(host)
+            hostname = hostname or "Неизвестно"
+            new_hosts[host] = {
+                "original_name": hostname,
+                "custom_name": self.known_hosts.get(host, {}).get("custom_name", None)
+            }
+            self.logger.debug(f"Scanned host {host} with original_name={hostname}")
         for host in self.known_hosts:
             if host not in new_hosts:
                 new_hosts[host] = self.known_hosts[host]
@@ -320,6 +345,7 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            event.accept()
+            self.config_file_opened = False
+            QApplication.quit()
         else:
             event.ignore()

@@ -1,8 +1,8 @@
-# config.py
-
 import os
 import json
 import logging
+
+from PyQt6.QtWidgets import QMessageBox
 
 
 class ConfigManager:
@@ -17,14 +17,21 @@ class ConfigManager:
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    config = json.load(f)
+                    if "hosts" in config:
+                        config["hosts"] = {
+                            host: {"original_name": name, "custom_name": name}
+                            if isinstance(name, str) else name
+                            for host, name in config["hosts"].items()
+                        }
+                    return config
             return {}
         except Exception as e:
             self.logger.error(f"Failed to load config: {e}")
             return {}
 
-    def save_config(self, subnets, hosts, notification_states, ssh_user="", log_level="INFO", auto_refresh=True):
-        """Сохраняет конфигурацию в файл."""
+    def save_config(self, subnets, hosts, notification_states, ssh_user="", log_level="INFO", auto_refresh=True, parent=None):
+        # """Сохраняет конфигурацию в файл."""
         config = {
             "subnets": subnets,
             "hosts": hosts,
@@ -49,7 +56,7 @@ class ConfigManager:
         except Exception as e:
             self.logger.error(f"Failed to clear config: {e}")
 
-    def open_config_file(self):
+    def open_config_file(self, parent=None):
         """Открывает файл конфигурации в текстовом редакторе."""
         try:
             import platform
@@ -61,6 +68,9 @@ class ConfigManager:
             else:
                 subprocess.run(["xdg-open", self.config_file], check=True)
             self.logger.debug("Opened config file")
+            # Устанавливаем флаг config_file_opened в родительском MainWindow
+            if parent:
+                parent.config_file_opened = True
         except Exception as e:
             self.logger.error(f"Failed to open config file: {e}")
             raise RuntimeError(f"Cannot open config file: {e}")
@@ -75,5 +85,6 @@ class ConfigManager:
             main_window.notification_states,
             main_window.ssh_user,
             main_window.log_level,
-            main_window.auto_refresh
+            main_window.auto_refresh,
+            parent=main_window
         )

@@ -1,18 +1,22 @@
-# SettingDialog.py
-
 import ipaddress
+import json
 import logging
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QWidget, QPushButton, QListWidget, QInputDialog, \
-    QMessageBox, QCheckBox, QLineEdit, QLabel, QComboBox, QTextEdit
+import os
 
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QWidget, QPushButton, QListWidget, QInputDialog, QMessageBox, QCheckBox, QLineEdit, QLabel, QComboBox, QTextEdit, QHBoxLayout
+from PyQt6.QtCore import Qt
+from config import ConfigManager
 
 class SettingsDialog(QDialog):
     """Модальное окно настроек с вкладками."""
-
     def __init__(self, subnets, notification_states, ssh_user, log_level, config_manager, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Настройки")
-        self.setGeometry(100, 100, 400, 400)
+        # Устанавливаем размер окна таким же, как у MainWindow
+        if parent:
+            self.resize(parent.size())
+        else:
+            self.setGeometry(100, 100, 800, 600)  # Запасной размер, если parent отсутствует
         self.setModal(True)
         self.subnets = subnets.copy()
         self.notification_states = notification_states.copy()
@@ -34,15 +38,15 @@ class SettingsDialog(QDialog):
         self.setup_notification_tab()
         self.tabs.addTab(self.notification_tab, "Оповещения")
 
-        # Вкладка "Конфигурация"
-        self.config_tab = QWidget()
-        self.setup_config_tab()
-        self.tabs.addTab(self.config_tab, "Конфигурация")
-
         # Вкладка "SSH"
         self.ssh_tab = QWidget()
         self.setup_ssh_tab()
         self.tabs.addTab(self.ssh_tab, "SSH")
+
+        # Вкладка "Конфигурация"
+        self.config_tab = QWidget()
+        self.setup_config_tab()
+        self.tabs.addTab(self.config_tab, "Конфигурация")
 
         # Вкладка "Логи"
         self.logs_tab = QWidget()
@@ -55,10 +59,22 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.about_tab, "About")
 
         layout.addWidget(self.tabs)
-        save_button = QPushButton("Сохранить")
-        save_button.clicked.connect(self.accept)
-        layout.addWidget(save_button)
+        self.save_button = QPushButton("Сохранить")
+        self.save_button.clicked.connect(self.accept)
+        layout.addWidget(self.save_button)
+
         self.setLayout(layout)
+
+        # Подключаем сигнал смены вкладки для обновления текста кнопки
+        self.tabs.currentChanged.connect(self.update_save_button_text)
+
+    def update_save_button_text(self, index):
+        """Обновляет текст кнопки 'Сохранить' в зависимости от активной вкладки."""
+        if index in [3, 4, 5]:  # Индексы вкладок "Логи" (3) и "Конфигурация" (4)
+            self.save_button.setText("Закрыть")
+        else:
+            self.save_button.setText("Сохранить")
+        self.logger.debug(f"Updated save button text to '{self.save_button.text()}' for tab index {index}")
 
     def setup_subnet_tab(self):
         layout = QVBoxLayout()
@@ -131,19 +147,6 @@ class SettingsDialog(QDialog):
             layout.addWidget(checkbox)
         self.notification_tab.setLayout(layout)
 
-    def setup_config_tab(self):
-        layout = QVBoxLayout()
-        clear_button = QPushButton("Очистить конфигурацию")
-        clear_button.clicked.connect(self.clear_config)
-        layout.addWidget(clear_button)
-
-        open_button = QPushButton("Открыть config.json")
-        open_button.clicked.connect(self.config_manager.open_config_file)
-        layout.addWidget(open_button)
-
-        layout.addStretch()
-        self.config_tab.setLayout(layout)
-
     def setup_ssh_tab(self):
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Имя пользователя для SSH (оставьте пустым для значения по умолчанию):"))
@@ -162,7 +165,6 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.log_level_combo)
         self.logs_text = QTextEdit()
         self.logs_text.setReadOnly(True)
-        import os
         log_file = os.path.expanduser("~/.moonraker_scanner/moonraker_scanner.log")
         try:
             with open(log_file, "r", encoding="utf-8") as f:
@@ -171,6 +173,75 @@ class SettingsDialog(QDialog):
             self.logs_text.setText("Файл логов не найден.")
         layout.addWidget(self.logs_text)
         self.logs_tab.setLayout(layout)
+
+    def setup_config_tab(self):
+        """Настраивает вкладку для редактирования config.json."""
+        layout = QVBoxLayout()
+        self.config_editor = QTextEdit()
+        self.config_editor.setFontFamily("Courier")  # Моноширинный шрифт для JSON
+        try:
+            with open(self.config_manager.config_file, "r", encoding="utf-8") as f:
+                self.config_editor.setText(f.read())
+        except FileNotFoundError:
+            self.config_editor.setText(json.dumps({}, indent=4, ensure_ascii=False))
+        layout.addWidget(self.config_editor)
+
+        button_layout = QHBoxLayout()
+        clear_button = QPushButton("Очистить конфигурацию")
+        clear_button.clicked.connect(self.clear_config)
+        button_layout.addWidget(clear_button)
+
+        save_button = QPushButton("Сохранить")
+        save_button.clicked.connect(self.save_config_editor)
+        button_layout.addWidget(save_button)
+
+        cancel_button = QPushButton("Отмена")
+        cancel_button.clicked.connect(self.cancel_config_editor)
+        button_layout.addWidget(cancel_button)
+
+        layout.addLayout(button_layout)
+        self.config_tab.setLayout(layout)
+
+    def save_config_editor(self):
+        """Сохраняет изменения из редактора конфигурации."""
+        try:
+            config_text = self.config_editor.toPlainText()
+            # Проверяем валидность JSON
+            config = json.loads(config_text)
+            # Сохраняем конфигурацию
+            with open(self.config_manager.config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+            self.logger.debug("Config editor changes saved")
+            # Обновляем данные в MainWindow
+            parent = self.parent()
+            parent.config = config
+            parent.subnets = config.get("subnets", [parent.network_utils.get_local_subnet()])
+            parent.known_hosts = config.get("hosts", {})
+            parent.notification_states = config.get("notification_states", [])
+            parent.ssh_user = config.get("ssh_user", "")
+            parent.log_level = config.get("log_level", "INFO")
+            parent.auto_refresh = config.get("auto_refresh", True)
+            parent.current_hosts = list(parent.known_hosts.keys())
+            parent.table.setRowCount(0)
+            parent.initialize_table()
+            parent.config_file_opened = False  # Сбрасываем флаг
+            QMessageBox.information(self, "Успех", "Конфигурация сохранена.")
+        except json.JSONDecodeError:
+            self.logger.error("Invalid JSON format in config editor")
+            QMessageBox.critical(self, "Ошибка", "Некорректный формат JSON.")
+        except Exception as e:
+            self.logger.error(f"Failed to save config from editor: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить конфигурацию: {str(e)}")
+
+    def cancel_config_editor(self):
+        """Отменяет изменения в редакторе конфигурации."""
+        try:
+            with open(self.config_manager.config_file, "r", encoding="utf-8") as f:
+                self.config_editor.setText(f.read())
+        except FileNotFoundError:
+            self.config_editor.setText(json.dumps({}, indent=4, ensure_ascii=False))
+        self.parent().config_file_opened = False  # Сбрасываем флаг
+        self.logger.debug("Config editor changes cancelled")
 
     def update_log_level(self, level):
         from utils import set_log_level
@@ -195,19 +266,28 @@ class SettingsDialog(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
+            # Очищаем файл конфигурации
             self.config_manager.clear_config()
-            self.subnets = [self.parent().network_utils.get_local_subnet()]
-            self.notification_states = []
-            self.ssh_user = ""
-            self.log_level = "INFO"
+            # Сбрасываем данные в MainWindow
+            parent = self.parent()
+            parent.subnets = [parent.network_utils.get_local_subnet()]
+            parent.known_hosts = {}
+            parent.notification_states = []
+            parent.ssh_user = ""
+            parent.log_level = "INFO"
+            parent.current_hosts = []
+            parent.previous_states = {}
+            # Обновляем UI
             self.subnet_list.clear()
-            self.subnet_list.addItems(self.subnets)
+            self.subnet_list.addItems(parent.subnets)
             for state, checkbox in self.checkboxes.items():
                 checkbox.setChecked(False)
             self.ssh_user_input.setText("")
             self.log_level_combo.setCurrentText("INFO")
+            parent.table.setRowCount(0)  # Очищаем таблицу
+            self.config_editor.setText(json.dumps({}, indent=4, ensure_ascii=False))  # Очищаем редактор
             QMessageBox.information(self, "Успех", "Конфигурация очищена.")
-            self.logger.debug("Configuration cleared from settings dialog")
+            self.logger.debug("Configuration cleared and UI updated")
 
     def get_subnets(self):
         return self.subnets

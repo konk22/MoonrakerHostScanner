@@ -99,9 +99,12 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: release_url
+        path: ./release_url
     - name: Get Release File Name & Upload URL
       id: get_release_info
-      run: echo "upload_url=$(cat release_url/release_url.txt)" >> $GITHUB_OUTPUT
+      shell: bash
+      run: |
+        echo "upload_url=$(cat ./release_url/release_url.txt)" >> "$GITHUB_OUTPUT"
     - name: Upload Release Asset (Main)
       uses: actions/upload-release-asset@v1
       env:

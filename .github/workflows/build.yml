@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  createrelease:
+  release:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
@@ -42,13 +42,13 @@ jobs:
           - os: windows-latest
             target: windows
             cmd_build: |
-              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md;." --add-data "icon.ico;." --add-data "icon.icns;." --add-data "icon.png;." --icon "icon.ico" main.py
+              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md;." --add-data "icon.ico;." --add-data "icon.png;." --icon "dist/icon.ico" main.py
             out_file_name: MoonrakerHostScanner.exe
             asset_mime: application/vnd.microsoft.portable-executable
           - os: macos-latest
             target: macos
             cmd_build: |
-              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.icns" main.py
+              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.icns:." --add-data "icon.png:." --icon "dist/icon.icns" main.py
               codesign --sign - --force --deep dist/MoonrakerHostScanner.app
               sleep 2
               hdiutil create -volname MoonrakerHostScanner -srcfolder dist/MoonrakerHostScanner.app -ov -format UDZO dist/MoonrakerHostScanner.dmg
@@ -57,7 +57,7 @@ jobs:
           - os: ubuntu-latest
             target: linux
             cmd_build: |
-              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.png" main.py
+              pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.png:." --icon "icon.png" main.py
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
                   --quick-generate-key "MoonrakerHostScanner <itormyshev@gmail.com>" rsa3072 sign 365
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
@@ -66,77 +66,36 @@ jobs:
             out_file_name_sig: MoonrakerHostScanner.asc
             asset_mime: application/octet-stream
             asset_mime_sig: text/plain
+
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install app dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # === Генерация иконок из icon.png для всех платформ ===
-      - name: Install icon tooling (Pillow + icnsutil)
-        shell: bash
-        run: |
           pip install pillow icnsutil
-
-      - name: Prepare icons from icon.png (ICO/ICNS/PNG)
-        shell: bash
-        run: |
-          python - <<'PY'
-          import os, sys
-          from PIL import Image
-
-          SRC = "icon.png"
-          if not os.path.exists(SRC):
-              print("ERROR: icon.png not found in repo root", file=sys.stderr)
-              sys.exit(1)
-
-          img = Image.open(SRC).convert("RGBA")
-
-          # Приводим к квадрату с прозрачными полями (без искажений)
-          target_base = 1024
-          ratio = min(target_base / img.width, target_base / img.height)
-          resized = img.resize((int(round(img.width*ratio)), int(round(img.height*ratio))), Image.LANCZOS)
-          base = Image.new("RGBA", (target_base, target_base), (0,0,0,0))
-          base.paste(resized, ((target_base - resized.width)//2, (target_base - resized.height)//2))
-
-          # Windows ICO (мульти-размер)
-          ico_sizes = [16, 32, 48, 256]
-          base.save("icon.ico", sizes=[(s, s) for s in ico_sizes])
-
-          # Linux PNG (основной 256) + варианты для трея
-          for s in [256, 128, 64, 48, 32, 24, 16]:
-              base.resize((s, s), Image.LANCZOS).save(f"icon_{s}.png")
-          # Перезаписываем icon.png квадратной версией 256x256 для PyInstaller
-          base.resize((256, 256), Image.LANCZOS).save("icon.png")
-
-          # Временный большой PNG для генерации ICNS
-          base.save("icon_base.png")
-          PY
-
-          # macOS ICNS из icon_base.png (CLI icnsutil)
-          icnsutil compose icon_base.png -o icon.icns --sizes 16 32 64 128 256 512 1024
-
-      # (Необязательно) Можно удалить инструменты, чтобы не мешали окружению
-      - name: Uninstall icon tooling
-        shell: bash
-        run: pip uninstall -y pillow icnsutil
-
       - name: Install additional tools (Linux only)
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update && sudo apt-get install -y gpg
-
+      - name: Prepare icons (Windows and macOS)
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          import subprocess, sys
+          # Создаем ICO для Windows
+          img = Image.open("icon.png")
+          img.save("dist/icon.ico")
+          # Создаем ICNS для macOS
+          subprocess.run(["icnsutil", "compose", "dist/icon.icns", "icon.png"], check=True)
+          PY
       - name: Build with pyinstaller for ${{ matrix.target }}
         run: ${{ matrix.cmd_build }}
         shell: bash
-
       - name: Sign artifact (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -144,24 +103,20 @@ jobs:
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MoonrakerHostScanner" -KeyUsage DigitalSignature -CertStoreLocation Cert:\LocalMachine\My
           Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password (ConvertTo-SecureString -String "testpassword" -Force -AsPlainText)
           & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f cert.pfx /p testpassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ./dist/MoonrakerHostScanner.exe
-
       - name: Sign artifact (macOS)
         if: matrix.target == 'macos'
         run: echo "Ad-hoc signing completed during build"
         shell: bash
-
       - name: Load Release URL File from release job
         uses: actions/download-artifact@v4
         with:
           name: release_url
           path: ./release_url
-
       - name: Get Release File Name & Upload URL
         id: get_release_info
         run: |
           echo "upload_url=$(cat ./release_url/release_url.txt)" >> "$GITHUB_OUTPUT"
         shell: bash
-
       - name: Upload Release Asset (Main)
         uses: actions/upload-release-asset@v1
         env:
@@ -171,7 +126,6 @@ jobs:
           asset_path: ./dist/${{ matrix.out_file_name }}
           asset_name: ${{ matrix.out_file_name }}
           asset_content_type: ${{ matrix.asset_mime }}
-
       - name: Upload Release Asset (Signature, Linux only)
         if: matrix.target == 'linux'
         uses: actions/upload-release-asset@v1

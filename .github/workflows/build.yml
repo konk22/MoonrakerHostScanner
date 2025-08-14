@@ -60,7 +60,7 @@ jobs:
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
                   --quick-generate-key "MoonrakerHostScanner <itormyshev@gmail.com>" rsa3072 sign 365
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
-                  --armor --output MoonrakerHostScanner.asc --detach-sign ./dist/MoonrakerHostScanner
+                  --armor --output ./dist/MoonrakerHostScanner.asc --detach-sign ./dist/MoonrakerHostScanner
             out_file_name: MoonrakerHostScanner
             out_file_name_sig: MoonrakerHostScanner.asc
             asset_mime: application/octet-stream

@@ -15,14 +15,15 @@ jobs:
     steps:
     - name: Create Release
       id: create_release
-      uses: actions/create-release
+      uses: softprops/action-gh-release@v1  # Современная замена устаревшему actions/create-release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref_name }}  # Используем github.ref_name для чистого имени тега (v0.0.1 вместо refs/tags/v0.0.1)
-        release_name: Release ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
+        generate_release_notes: true
     - name: Output Release URL File
       run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
     - name: Save Release URL File for publish

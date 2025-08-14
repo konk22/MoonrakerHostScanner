@@ -6,31 +6,31 @@ on:
       - 'v*'
 
 permissions:
-  contents: write  # Необходимые права для создания релиза и загрузки артефактов
+  contents: write
 
 jobs:
   createrelease:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-    - name: Create Release
-      id: create_release
-      uses: softprops/action-gh-release@v1  # Современная замена устаревшему actions/create-release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-    - name: Output Release URL File
-      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
-    - name: Save Release URL File for publish
-      uses: actions/upload-artifact@v4
-      with:
-        name: release_url
-        path: release_url.txt
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+      - name: Output Release URL File
+        run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
+      - name: Save Release URL File for publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: release_url
+          path: release_url.txt
 
   build:
     name: Build for ${{ matrix.target }}
@@ -43,8 +43,6 @@ jobs:
             target: windows
             cmd_build: |
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md;." --add-data "icon.ico;." --add-data "icon.icns;." --add-data "icon.png;." --icon "icon.ico" main.py
-            cmd_sign: |
-              $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MoonrakerHostScanner" -KeyUsage DigitalSignature -CertStoreLocation Cert:\LocalMachine\My; Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password (ConvertTo-SecureString -String "testpassword" -Force -AsPlainText); & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f cert.pfx /p testpassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ./dist/MoonrakerHostScanner.exe
             out_file_name: MoonrakerHostScanner.exe
             asset_mime: application/vnd.microsoft.portable-executable
           - os: macos-latest
@@ -53,14 +51,12 @@ jobs:
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.icns" main.py
               codesign --sign - --force --deep dist/MoonrakerHostScanner.app
               hdiutil create -volname MoonrakerHostScanner -srcfolder dist/MoonrakerHostScanner.app -ov -format UDZO dist/MoonrakerHostScanner.dmg
-            cmd_sign: echo "Ad-hoc signing completed during build"
             out_file_name: MoonrakerHostScanner.dmg
             asset_mime: application/x-apple-diskimage
           - os: ubuntu-latest
             target: linux
             cmd_build: |
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.png" main.py
-            cmd_sign: |
               gpg --batch --yes --passphrase "testpass" --quick-generate-key "MoonrakerHostScanner <moonraker@example.com>" rsa3072 sign 365
               gpg --armor --output MoonrakerHostScanner.asc --detach-sign ./dist/MoonrakerHostScanner
             out_file_name: MoonrakerHostScanner
@@ -68,57 +64,59 @@ jobs:
             asset_mime: application/octet-stream
             asset_mime_sig: text/plain
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Install additional tools
-      shell: bash
-      run: |
-        if [ "${{ matrix.target }}" = "linux" ]; then
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Install additional tools (Linux only)
+        if: matrix.target == 'linux'
+        run: |
           sudo apt-get update && sudo apt-get install -y gpg
-        fi
-    - name: Build with pyinstaller for ${{ matrix.target }}
-      run: ${{ matrix.cmd_build }}
-    - name: Sign artifact for ${{ matrix.target }}
-      shell: bash
-      run: |
-        if [ "${{ matrix.target }}" = "windows" ]; then
-          powershell -Command "${{ matrix.cmd_sign }}"
-        else
-          ${{ matrix.cmd_sign }}
-        fi
-    - name: Load Release URL File from release job
-      uses: actions/download-artifact@v4
-      with:
-        name: release_url
-        path: ./release_url
-    - name: Get Release File Name & Upload URL
-      id: get_release_info
-      shell: bash
-      run: |
-        echo "upload_url=$(cat ./release_url/release_url.txt)" >> "$GITHUB_OUTPUT"
-    - name: Upload Release Asset (Main)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-        asset_path: ./dist/${{ matrix.out_file_name }}
-        asset_name: ${{ matrix.out_file_name }}
-        asset_content_type: ${{ matrix.asset_mime }}
-    - name: Upload Release Asset (Signature, Linux only)
-      if: matrix.target == 'linux'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-        asset_path: ./dist/${{ matrix.out_file_name_sig }}
-        asset_name: ${{ matrix.out_file_name_sig }}
-        asset_content_type: ${{ matrix.asset_mime_sig }}
+      - name: Build with pyinstaller for ${{ matrix.target }}
+        run: ${{ matrix.cmd_build }}
+        shell: bash
+      - name: Sign artifact (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MoonrakerHostScanner" -KeyUsage DigitalSignature -CertStoreLocation Cert:\LocalMachine\My
+          Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password (ConvertTo-SecureString -String "testpassword" -Force -AsPlainText)
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f cert.pfx /p testpassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ./dist/MoonrakerHostScanner.exe
+      - name: Sign artifact (macOS)
+        if: matrix.target == 'macos'
+        run: echo "Ad-hoc signing completed during build"
+        shell: bash
+      - name: Load Release URL File from release job
+        uses: actions/download-artifact@v4
+        with:
+          name: release_url
+          path: ./release_url
+      - name: Get Release File Name & Upload URL
+        id: get_release_info
+        run: |
+          echo "upload_url=$(cat ./release_url/release_url.txt)" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: Upload Release Asset (Main)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+          asset_path: ./dist/${{ matrix.out_file_name }}
+          asset_name: ${{ matrix.out_file_name }}
+          asset_content_type: ${{ matrix.asset_mime }}
+      - name: Upload Release Asset (Signature, Linux only)
+        if: matrix.target == 'linux'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+          asset_path: ./dist/${{ matrix.out_file_name_sig }}
+          asset_name: ${{ matrix.out_file_name_sig }}
+          asset_content_type: ${{ matrix.asset_mime_sig }}

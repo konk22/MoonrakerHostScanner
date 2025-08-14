@@ -50,6 +50,7 @@ jobs:
             cmd_build: |
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md:." --add-data "icon.ico:." --add-data "icon.icns:." --add-data "icon.png:." --icon "icon.icns" main.py
               codesign --sign - --force --deep dist/MoonrakerHostScanner.app
+              sleep 2
               hdiutil create -volname MoonrakerHostScanner -srcfolder dist/MoonrakerHostScanner.app -ov -format UDZO dist/MoonrakerHostScanner.dmg
             out_file_name: MoonrakerHostScanner.dmg
             asset_mime: application/x-apple-diskimage
@@ -60,7 +61,7 @@ jobs:
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
                   --quick-generate-key "MoonrakerHostScanner <itormyshev@gmail.com>" rsa3072 sign 365
               gpg --batch --yes --passphrase "testpass" --pinentry-mode loopback \
-                  --armor --output MoonrakerHostScanner.asc --detach-sign ./dist/MoonrakerHostScanner
+                  --armor --output ./dist/MoonrakerHostScanner.asc --detach-sign ./dist/MoonrakerHostScanner
             out_file_name: MoonrakerHostScanner
             out_file_name_sig: MoonrakerHostScanner.asc
             asset_mime: application/octet-stream

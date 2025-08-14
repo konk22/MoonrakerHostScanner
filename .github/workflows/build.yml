@@ -1,3 +1,4 @@
+```yaml
 name: Build
 
 on:
@@ -15,7 +16,7 @@ jobs:
     steps:
     - name: Create Release
       id: create_release
-      uses: softprops/action-gh-release@v1  # Современная замена устаревшему actions/create-release
+      uses: actions/create-release@v1.1.4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -44,9 +45,7 @@ jobs:
             cmd_build: |
               pyinstaller -F -w -n MoonrakerHostScanner --add-data "about.md;." --add-data "icon.ico;." --add-data "icon.icns;." --add-data "icon.png;." --icon "icon.ico" main.py
             cmd_sign: |
-              $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MoonrakerHostScanner" -KeyUsage DigitalSignature -CertStoreLocation Cert:\LocalMachine\My
-              Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password (ConvertTo-SecureString -String "testpassword" -Force -AsPlainText)
-              & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f cert.pfx /p testpassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ./dist/MoonrakerHostScanner.exe
+              $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=MoonrakerHostScanner" -KeyUsage DigitalSignature -CertStoreLocation Cert:\LocalMachine\My; Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password (ConvertTo-SecureString -String "testpassword" -Force -AsPlainText); & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /f cert.pfx /p testpassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ./dist/MoonrakerHostScanner.exe
             out_file_name: MoonrakerHostScanner.exe
             asset_mime: application/vnd.microsoft.portable-executable
           - os: macos-latest
@@ -124,3 +123,4 @@ jobs:
         asset_path: ./dist/${{ matrix.out_file_name_sig }}
         asset_name: ${{ matrix.out_file_name_sig }}
         asset_content_type: ${{ matrix.asset_mime_sig }}
+```

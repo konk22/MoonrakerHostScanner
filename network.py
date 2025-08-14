@@ -5,6 +5,7 @@ import ipaddress
 import requests
 import logging
 from cachetools import TTLCache
+from utils import DEFAULT_MOONRAKER_PORT, DEFAULT_HTTP_TIMEOUT_S, SCAN_CONNECT_TIMEOUT_S
 
 
 class NetworkUtils:
@@ -26,7 +27,7 @@ class NetworkUtils:
             self.logger.error(f"Failed to get local subnet: {e}")
             return "192.168.1.0/24"  # Fallback subnet
 
-    def scan_port(self, ip, port=7125, timeout=1):
+    def scan_port(self, ip, port=DEFAULT_MOONRAKER_PORT, timeout=SCAN_CONNECT_TIMEOUT_S):
         """Проверяет, открыт ли порт на указанном IP."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -47,16 +48,16 @@ class NetworkUtils:
         hostname = "Неизвестно"
         state = "Недоступен"
         try:
-            response = requests.get(f"http://{host}:7125/printer/info", timeout=2)
+            response = requests.get(f"http://{host}:{DEFAULT_MOONRAKER_PORT}/printer/info", timeout=DEFAULT_HTTP_TIMEOUT_S)
             if response.status_code == 200:
                 data = response.json()
                 hostname = data.get("result", {}).get("hostname", "Неизвестно")
 
             response = requests.post(
-                f"http://{host}:7125/printer/objects/query",
+                f"http://{host}:{DEFAULT_MOONRAKER_PORT}/printer/objects/query",
                 json={"objects": {"print_stats": None}},
                 headers={"Content-Type": "application/json"},
-                timeout=2
+                timeout=DEFAULT_HTTP_TIMEOUT_S
             )
             if response.status_code == 200:
                 data = response.json()
@@ -77,3 +78,27 @@ class NetworkUtils:
         except Exception as e:
             self.logger.error(f"Network connectivity test failed: {e}")
             return False
+
+    def send_printer_command(self, host, command):
+        """Отправляет команду Moonraker API для управления печатью.
+
+        Возвращает кортеж (success: bool, status_code: int | None).
+        Бросает requests.RequestException при сетевых ошибках.
+        """
+        commands = {
+            "start": "/printer/print/start",
+            "pause": "/printer/print/pause",
+            "cancel": "/printer/print/cancel",
+            "emergency_stop": "/printer/emergency_stop"
+        }
+        if command not in commands:
+            self.logger.error(f"Unknown command: {command}")
+            return False, None
+        url = f"http://{host}:{DEFAULT_MOONRAKER_PORT}{commands[command]}"
+        try:
+            response = requests.post(url, timeout=5)
+            self.logger.debug(f"Sent command {command} to {host}, status={response.status_code}")
+            return response.status_code == 200, response.status_code
+        except requests.RequestException as e:
+            self.logger.error(f"Failed to send {command} command to {host}: {e}")
+            raise

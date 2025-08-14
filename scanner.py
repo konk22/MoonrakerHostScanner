@@ -4,6 +4,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from concurrent.futures import ThreadPoolExecutor
 import ipaddress
 import logging
+from utils import KNOWN_HOSTS_WORKERS, SUBNET_SCAN_WORKERS
 
 
 class ScanThread(QThread):
@@ -32,7 +33,7 @@ class ScanThread(QThread):
             self.error_occurred.emit("Нет доступа к сети. Проверьте подключение.")
             return
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=KNOWN_HOSTS_WORKERS) as executor:
             futures = [executor.submit(self.network_utils.scan_port, ip) for ip in known_hosts]
             for future in futures:
                 scanned_hosts += 1
@@ -48,7 +49,7 @@ class ScanThread(QThread):
             try:
                 network = ipaddress.ip_network(subnet, strict=False)
                 self.logger.debug(f"Scanning subnet: {subnet}")
-                with ThreadPoolExecutor(max_workers=100) as executor:
+                with ThreadPoolExecutor(max_workers=SUBNET_SCAN_WORKERS) as executor:
                     futures = [executor.submit(self.network_utils.scan_port, ip) for ip in network.hosts()]
                     for future in futures:
                         scanned_hosts += 1

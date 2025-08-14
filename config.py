@@ -2,8 +2,6 @@ import os
 import json
 import logging
 
-from PyQt6.QtWidgets import QMessageBox
-
 
 class ConfigManager:
     def __init__(self):
@@ -30,8 +28,7 @@ class ConfigManager:
             self.logger.error(f"Failed to load config: {e}")
             return {}
 
-    def save_config(self, subnets, hosts, notification_states, ssh_user="", log_level="INFO", auto_refresh=True, parent=None):
-        # """Сохраняет конфигурацию в файл."""
+    def save_config(self, subnets, hosts, notification_states, ssh_user="", log_level="INFO", auto_refresh=True):
         config = {
             "subnets": subnets,
             "hosts": hosts,
@@ -56,25 +53,6 @@ class ConfigManager:
         except Exception as e:
             self.logger.error(f"Failed to clear config: {e}")
 
-    def open_config_file(self, parent=None):
-        """Открывает файл конфигурации в текстовом редакторе."""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == "Windows":
-                os.startfile(self.config_file)
-            elif platform.system() == "Darwin":
-                subprocess.run(["open", self.config_file], check=True)
-            else:
-                subprocess.run(["xdg-open", self.config_file], check=True)
-            self.logger.debug("Opened config file")
-            # Устанавливаем флаг config_file_opened в родительском MainWindow
-            if parent:
-                parent.config_file_opened = True
-        except Exception as e:
-            self.logger.error(f"Failed to open config file: {e}")
-            raise RuntimeError(f"Cannot open config file: {e}")
-
     def save_current_config(self, main_window):
         """
         Сохраняет текущую конфигурацию, извлекая параметры из экземпляра MainWindow.
@@ -85,6 +63,5 @@ class ConfigManager:
             main_window.notification_states,
             main_window.ssh_user,
             main_window.log_level,
-            main_window.auto_refresh,
-            parent=main_window
+            main_window.auto_refresh
         )

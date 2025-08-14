@@ -3,23 +3,16 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPus
     QSpacerItem, QSizePolicy, QMessageBox, QInputDialog, QApplication, QSystemTrayIcon, QTableWidgetItem
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
-import os
 import platform
 from config import ConfigManager
 from scanner import ScanThread
 from network import NetworkUtils
-from utils import APP_NAME, open_ssh_terminal, LOG_LEVELS, set_log_level
+from utils import APP_NAME, open_ssh_terminal, set_log_level, resource_path, REFRESH_INTERVAL_MS, \
+    AUTO_REFRESH_INTERVAL_MS, STATE_OFFLINE
 from HostTable import HostTable
 from WebcamDialog import WebcamDialog
 from SettingsDialog import SettingsDialog
-import sys
 
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -41,7 +34,6 @@ class MainWindow(QMainWindow):
         self.auto_refresh = self.config.get("auto_refresh", True)
         self.previous_states = {}
         self.current_hosts = []
-        self.config_file_opened = False
 
         set_log_level(self.log_level)
 
@@ -121,14 +113,14 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(lambda: self.refresh_hosts(auto=True))
         if self.auto_refresh:
-            self.refresh_timer.start(1000)
+            self.refresh_timer.start(REFRESH_INTERVAL_MS)
 
         self.initialize_table()
 
     def toggle_auto_refresh(self, state):
         self.auto_refresh = state == Qt.CheckState.Checked.value
         if self.auto_refresh:
-            self.refresh_timer.start(300)
+            self.refresh_timer.start(AUTO_REFRESH_INTERVAL_MS)
         else:
             self.refresh_timer.stop()
         self.config_manager.save_current_config(self)
@@ -136,14 +128,12 @@ class MainWindow(QMainWindow):
 
     def open_settings(self):
         dialog = SettingsDialog(self.subnets, self.notification_states, self.ssh_user, self.log_level,
-                               self.config_manager, self)
-        self.config_file_opened = True
+                                self.config_manager, self)
         if dialog.exec():
             self.subnets = dialog.get_subnets()
             self.notification_states = dialog.get_notification_states()
             self.ssh_user = dialog.get_ssh_credentials()
             self.log_level = dialog.get_log_level()
-            self.config_file_opened = False
             self.config_manager.save_current_config(self)
             self.logger.debug(
                 f"Settings updated: subnets={self.subnets}, notification_states={self.notification_states}, "
@@ -200,7 +190,7 @@ class MainWindow(QMainWindow):
             return
         host = self.table.item(row, 1).text().lstrip('🟢🔴 ').strip()
         if column == 0:  # Клик по имени
-            self.table.toggle_control_row(row, host)
+            self.table.toggle_control_row(host)
         elif column == 1:  # Хост
             import webbrowser
             webbrowser.open(f"http://{host}")
@@ -247,11 +237,12 @@ class MainWindow(QMainWindow):
         for host, host_info in self.known_hosts.items():
             hostname, state = self.network_utils.get_printer_info(host)
             self.known_hosts[host]["original_name"] = hostname or "Неизвестно"
-            display_name = host_info.get("custom_name") if host_info.get("custom_name") is not None else (hostname or "Неизвестно")
+            display_name = host_info.get("custom_name") if host_info.get("custom_name") is not None else (
+                        hostname or "Неизвестно")
             self.current_hosts.append(host)
             row = self.table.rowCount()
             self.table.insertRow(row)
-            self.table.add_host(row, host, display_name, "Оффлайн", self.known_hosts)
+            self.table.add_host(row, host, display_name, STATE_OFFLINE, self.known_hosts)
             self.logger.debug(f"Initialized host {host} with display_name={display_name}")
 
     def add_host_to_table(self, host, hostname, state):
@@ -262,7 +253,8 @@ class MainWindow(QMainWindow):
         else:
             self.known_hosts[host]["original_name"] = hostname
             self.logger.debug(f"Updated original_name for {host} to {hostname}")
-        custom_name = self.known_hosts[host].get("custom_name") if self.known_hosts[host].get("custom_name") is not None else hostname
+        custom_name = self.known_hosts[host].get("custom_name") if self.known_hosts[host].get(
+            "custom_name") is not None else hostname
         was_updated = self.table.update_host_state(host, custom_name, state, self.known_hosts)
         if not was_updated:
             self.current_hosts.append(host)
@@ -334,9 +326,6 @@ class MainWindow(QMainWindow):
             self.refresh_button.setEnabled(True)
         self.logger.debug(f"Scan finished, updated hosts: {new_hosts}")
 
-    def show_error(self, message, auto):
-        self.handle_thread_error(message, auto)
-
     def closeEvent(self, event):
         reply = QMessageBox.question(
             self,
@@ -345,7 +334,6 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.config_file_opened = False
             QApplication.quit()
         else:
             event.ignore()

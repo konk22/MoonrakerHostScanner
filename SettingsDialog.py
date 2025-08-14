@@ -4,8 +4,6 @@ import logging
 import os
 
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QWidget, QPushButton, QListWidget, QInputDialog, QMessageBox, QCheckBox, QLineEdit, QLabel, QComboBox, QTextEdit, QHBoxLayout
-from PyQt6.QtCore import Qt
-from config import ConfigManager
 
 class SettingsDialog(QDialog):
     """Модальное окно настроек с вкладками."""
@@ -165,7 +163,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.log_level_combo)
         self.logs_text = QTextEdit()
         self.logs_text.setReadOnly(True)
-        log_file = os.path.expanduser("~/.moonraker_scanner/moonraker_scanner.log")
+        log_file = os.path.join(self.config_manager.config_dir, "moonraker_scanner.log")
         try:
             with open(log_file, "r", encoding="utf-8") as f:
                 self.logs_text.setText(f.read())
@@ -224,7 +222,7 @@ class SettingsDialog(QDialog):
             parent.current_hosts = list(parent.known_hosts.keys())
             parent.table.setRowCount(0)
             parent.initialize_table()
-            parent.config_file_opened = False  # Сбрасываем флаг
+            # Редактор конфигурации закрыт: синхронизация состояний выполнена
             QMessageBox.information(self, "Успех", "Конфигурация сохранена.")
         except json.JSONDecodeError:
             self.logger.error("Invalid JSON format in config editor")
@@ -240,7 +238,7 @@ class SettingsDialog(QDialog):
                 self.config_editor.setText(f.read())
         except FileNotFoundError:
             self.config_editor.setText(json.dumps({}, indent=4, ensure_ascii=False))
-        self.parent().config_file_opened = False  # Сбрасываем флаг
+        # Отмена изменений редактора: откат к состоянию на диске выполнен
         self.logger.debug("Config editor changes cancelled")
 
     def update_log_level(self, level):

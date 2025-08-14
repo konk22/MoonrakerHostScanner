@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write  # Необходимые права для создания релиза и загрузки артефактов
+
 jobs:
   createrelease:
     name: Create Release
@@ -12,12 +15,12 @@ jobs:
     steps:
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: actions/create-release@v1.1.4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}  # Используем github.ref_name для чистого имени тега (v0.0.1 вместо refs/tags/v0.0.1)
+        release_name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false
     - name: Output Release URL File
